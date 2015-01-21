@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans" 
+    xmlns:jdbc="http://www.springframework.org/schema/jdbc"
+    xmlns:context="http://www.springframework.org/schema/context"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:batch ="http://www.springframework.org/schema/batch"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+	    http://www.springframework.org/schema/context http://www.springframework.org/schema/context/spring-context-3.0.xsd
+       	http://www.springframework.org/schema/jdbc http://www.springframework.org/schema/jdbc/spring-jdbc.xsd
+       	http://www.springframework.org/schema/batch http://www.springframework.org/schema/batch/spring-batch.xsd">
+
+    <context:annotation-config/>
+
+    <context:component-scan base-package="batch"/>
+
+    <bean id="taskExecutor" class="org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor">
+        <property name="corePoolSize" value="6"/>
+        <property name="maxPoolSize" value="6"/>
+    </bean>
+
+    <bean id="albumItemReader" class="batch.SynchronisedReader" scope="step">
+        <property name="delegate" ref="readerDelegate"/>
+    </bean>
+
+    <bean id="readerDelegate"
+          class="org.springframework.batch.item.database.JdbcCursorItemReader">
+        <property name="dataSource" ref="sourceData"/>
+        <property name="sql" value="SELECT id, album_data FROM source_table"/>
+        <property name="rowMapper" ref="albumRowMapper"/>
+        <property name="fetchSize" value="100"/>
+    </bean>
+
+    <bean id="albumItemWriter" class="batch.AlbumItemWriter">
+        <constructor-arg ref="destinationData"/>
+    </bean>
+
+    <bean id="processor" class="batch.AlbumProcessor"/>
+
+	<bean id="jobOperator" class="org.springframework.batch.core.launch.support.SimpleJobOperator">
+        <property name="jobLauncher" ref="jobLauncher"/>
+        <property name="jobExplorer" ref="jobExplorer"/>
+        <property name="jobRepository" ref="jobRepository"/>
+        <property name="jobRegistry" ref="jobRegistry"/>
+	</bean>
+
+	<bean id="jobExplorer" class="org.springframework.batch.core.explore.support.JobExplorerFactoryBean">
+        <property name="dataSource" ref="internalDataSource"/>
+    </bean>
+            
+	<bean id="jobRegistry"
+		class="org.springframework.batch.core.configuration.support.MapJobRegistry" />
+		
+	<bean class="org.springframework.batch.core.configuration.support.JobRegistryBeanPostProcessor">
+		<property name="jobRegistry" ref="jobRegistry"/>
+	</bean>
+	
+	<bean id="jobLauncher"
+		class="org.springframework.batch.core.launch.support.SimpleJobLauncher">
+		<property name="jobRepository" ref="jobRepository" />
+	</bean>
+	
+    <bean id="jobRepository" class="org.springframework.batch.core.repository.support.JobRepositoryFactoryBean">
+        <property name="dataSource" ref="internalDataSource"/>
+        <property name="transactionManager" ref="transactionManager"/>
+    </bean>
+
+    <bean id="sourceData"
+          class="org.springframework.jdbc.datasource.DriverManagerDataSource">
+        <property name="driverClassName" value="org.h2.Driver" />
+        <property name="url" value="jdbc:h2:mem:sourceDB;MODE=Oracle;DB_CLOSE_DELAY=-1;TRACE_LEVEL_SYSTEM_OUT=1" />
+    </bean>
+
+    <bean id="destinationData"
+          class="org.springframework.jdbc.datasource.DriverManagerDataSource">
+        <property name="driverClassName" value="org.h2.Driver" />
+        <property name="url" value="jdbc:h2:mem:destDB;MODE=Oracle;DB_CLOSE_DELAY=-1;TRACE_LEVEL_SYSTEM_OUT=1" />
+    </bean>
+
+    <bean id="internalDataSource"
+          class="org.springframework.jdbc.datasource.DriverManagerDataSource">
+        <property name="driverClassName" value="org.h2.Driver" />
+        <property name="url" value="jdbc:h2:mem:batchDB;DB_CLOSE_DELAY=-1;TRACE_LEVEL_SYSTEM_OUT=1" />
+    </bean>
+
+	<bean id="transactionManager" class="org.springframework.jdbc.datasource.DataSourceTransactionManager" lazy-init="true">
+		<property name="dataSource" ref="internalDataSource" />
+	</bean>
+
+    <jdbc:initialize-database data-source="sourceData">
+        <jdbc:script location="classpath:source-schema.sql" />
+    </jdbc:initialize-database>
+
+    <jdbc:initialize-database data-source="destinationData">
+        <jdbc:script location="classpath:dest-schema.sql" />
+    </jdbc:initialize-database>
+
+    <jdbc:initialize-database data-source="internalDataSource">
+        <jdbc:script location="classpath:/org/springframework/batch/core/schema-drop-h2.sql" />
+        <jdbc:script location="classpath:org/springframework/batch/core/schema-h2.sql" />
+    </jdbc:initialize-database>
+</beans>
